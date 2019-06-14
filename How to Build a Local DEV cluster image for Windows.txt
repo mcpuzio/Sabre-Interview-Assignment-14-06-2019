@@ -1,0 +1,109 @@
+﻿How to Build a Local DEV cluster image for Windows
+Part 1: How to build a Linux CentOS Virtual Machine with OpenShift for Vagrant
+
+
+Ensuring that Sabre developers have the adequate environments to work on takes some wrangling and work, as we’ll show you over the course of this two-part piece. The cloud applications used are AWS DEV cluster and OpenShift dependent, and therefore require a localized and mirrored environment to give Sabre developers the needed full freedom on OpenShift and control over development as best as possible. Among the tools necessary to begin this build, the list entails:
+
+
+* Vagrant 2.0.2
+* VirtualBox 5.2.12
+* Windows 7 SP1
+* CygWin
+* Powershell
+* Packer
+
+
+Before setting anything up, be forewarned that all commands must be made from the root directory of the project, unless it’s mentioned otherwise. Now to get to the procedures that are necessary to follow:
+
+
+* Install Packer from https://www.packer.io and add it to a PATH system variable.
+* Upgrade PowerShell to at least 4.0. Package can be found here:   
+https://www.microsoft.com/en-us/download/details.aspx?id=40855
+* Check the sources of the box-build project ( git.server.com/box-build.git )
+* Edit the centos-base-variables.json file to specify the credentials for the proxy server. Remember to HTML-encode non-alphanumeric characters.
+* Before running any command make sure that all files in the project contain Unix style line endings.
+* Open CygWin, change directories by moving to the folder with the project and execute the following:
+                      export ISO_URL= # 
+* Where the value must point to either a URL with a CentOS ISO image or to a location on a hard drive (escape backslashes with a backslash, i.e.: C:\\centos-image.iso).
+* It also has to be a DVD version from:  
+http://isoredirect.centos.org/centos/7/isos/x86_64/CentOS-7-x86_64-DVD-1804.iso
+
+
+      packer build -var-file=centos-base-variables.json -force centos-base.json
+
+
+When the Packer process finishes there should be a centos-base.box file in the current directory. Edit the centos-openshift-variables.json file and specify the proxy user and proxy password. As Guest Additions are propagated to the image from your local VirtualBox, make sure you have the proper version of VirtualBox installed - that is, version 5.2.12. Open  the terminal, change directories to the folder with the project and execute the following:
+      
+packer build -var-file=centos-openshift-variables.json -force centos-openshift.json
+
+
+Once the Packer process finishes, there should be a centos-7-openshift.box file. Upload a file to maven.repository.com. Make sure that the credentials are configured for the server with an id of user-upload in your ~/.m2/settings.xml and run the following command:
+    
+mvn deploy:deploy-file -DgroupId=com.example \
+    -DartifactId=vagrant-centos-open-shift \
+    -Dversion=1.0.7 \
+    -Dpackaging=box \
+    -Dfile=centos-7-openshift.box \
+    -DrepositoryId=user-upload \
+    -Durl=http://maven.repository.com/content/repositories/releases
+
+
+After an upload of a box shows up as successful, you may do the following:
+* Create a Git Tag with a deployed version: 1.0.X
+* Update -Dversion from the above command with a 1.0.X+1 pattern and then push the file.
+
+
+Part 2: The Run Procedure for Windows
+
+
+It’s great that you’ve made it this far. Congrats! Take note as we move onward: Vagrant commands must be executed from the root directory of the project.The Vagrant image should be in version 1.0.6 -  the details about how to download an image are further below.
+
+
+Steps To Take:
+
+
+First, make sure to upgrade PowerShell to at least version 4.0. The package can be found at: https://www.microsoft.com/en-us/download/details.aspx?id=40855. This upgrade is required due to PowerShell being used internally by Vagrant, whereas an old version of PowerShell made Vagrant freeze-up. Next, install Vagrant from https://www.vagrantup.com/downloads.html and add a PATH to it. Then, install the Nugrant plugin to allow using .vagrantuser files. Set the http_proxy and https_proxy environment variables and execute the following command:
+
+
+export http_proxy=http://PROXY_USER:PROXY_PASSWORD_HERE@proxy.server.com:80/
+export https_proxy=http://PROXY_USER:PROXY_PASSWORD_HERE@proxy.server.com:80/
+vagrant plugin install nugrant
+
+
+If your password contains non-alphanumeric characters then you need to HTML-encode it before exporting variables. Use this site to encode your password and put in a value instead of the PROXY_PASSWORD_HERE string.
+
+
+Thereafter, check the sources of the box-run Git project (git.server.com/box-run.git). Once both Vagrant and Nugrant are installed you can use either PowerShell, cmd, or stick to CygWin to work with Vagrant. Now, edit the .vagrantuser file to specify whether to use CNTLM on guest (details below), to limit memory, assign CPUs and whether additional software needs to be installed, and whether to start the GUI.
+
+
+IMPORTANT: if you run an image for the very first time or the global password has changed, export the following environment variables: PROXY_USER and PROXY_PASS. This can be done only once as the proper configuration file will be kept in VM. Do not HTML-encode a password if it contains non-alphanumeric characters. Wrap it in double quotation marks instead.
+
+
+Before you run any command, make sure that all files in the project contain Unix-style line endings.
+
+
+Unset the http_proxy and https_proxy environment variables. Add a box (image) to the Vagrant registry. Open the terminal, change the directory to the folder with the project and execute the following:
+    vagrant box add metadata.json
+
+
+After the command finishes you can check if the image was added to Vagrant's registry by entering the command:
+    vagrant box list
+
+
+If you already have the image in the repository, and would like to replace it, remove it first with the command below, and then again run the command above that adds the image:
+vagrant box remove centos-7-openshift.box
+
+
+Notice that vagrant box add metadata.json should be executed only if there is no image in the local repository OR if there is a new version of the image and a fresh one is required.
+
+
+If using Cygwin, you must have a private key in ~/.ssh/id_rsa. When using PowerShell or cmd it has to be in %USERPROFILE%\.ssh . If you don't have a private key generated, you can use PuTTYgen.exe to generate one. Please follow the following instructions: https://www.ssh.com/ssh/putty/windows/puttygen . Take notice that the private key shouldn't be password protected. Once the key is generated, save it to %USERPROFILE%\.ssh as id_rsa. When using CygWin, copy the file to ~/.ssh. When the box is successfully deployed in the Vagrant registry, you can run VM by executing the following command: vagrant up
+
+
+When the VM is up and running, you can ssh to the box with: vagrant ssh
+
+
+When you stop working with the instance and want to halt the VM execute:  vagrant halt
+
+
+With that, you should have all the necessary steps in order to setup and run a Local DEV Cluster image with Vagrant and the tools Sabre utilizes to ensure that environments function properly on the Windows 7 systems of our developers. If there are any questions, comments, or feedback, please utilize the proper S.O.P. channels to relay that information so that our team may continuously improve the quality of the documentation and content provided.
